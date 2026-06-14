@@ -1,12 +1,12 @@
-# ESP32-CAM-wireless-computer-vision-objects-detection
-ESP32 CAM wireless computer vision objects detection.
-
-
-DETECCION DE OBJETOS CON ESP32 CAM | VISION ARTIFICIAL PYTHON + OpenCV + Yolov3 (TIEMPO REAL)
-
-
-
-Se realiza con "coco" que se encuentra en el mismo directorio. En la parte de python se hace referencia en las lineas 13 al 26: donde se realiza la configuración y pesos de YoloV3 con la ayuda del modulo "dnn" de openCV. El archivo coconames contiene los nombres de distintos objetos que se han entrenado para deteccion de objetos... Luego se almacena en "classNames".  y así como "net" se basa en usar librerías para para capas de calculo de salida, cargar y procesar qyue ya fueron implementados y más información se encuentra en Internet.
-
-
-![image](https://user-images.githubusercontent.com/62358739/115599752-90573200-a2a1-11eb-84f8-86e12ba0e09a.png)
+AutoCheck v2 — Sistema de Detección de Placas VehicularesEste módulo forma parte de la infraestructura digital de AutoCheck v2, diseñado para capturar, procesar y reconocer placas vehiculares del formato de la SCT (México) en tiempo real mediante un flujo de visión artificial híbrido.El sistema obtiene el flujo de video desde una ESP32-CAM, localiza la placa mediante YOLOv8, aplica técnicas avanzadas de preprocesamiento de imágenes con OpenCV, extrae el texto usando EasyOCR, filtra/corrige el formato mediante expresiones regulares (Regex) y persiste los datos limpios en Firebase Firestore.🚀 Arquitectura del PipelineEl procesamiento de cada cuadro (frame) sigue el siguiente flujo de trabajo:Captura: Recepción de bytes vía HTTP (urllib) desde el servidor local de la ESP32-CAM.Localización (YOLOv8): Detección de la caja delimitadora (Bounding Box) de la placa con un umbral de confianza mínimo ($\ge 40\%$).Corte y Enfoque: Recorte inteligente de la región de interés (ROI), removiendo ruidos superiores típicos del marco de la placa.Preprocesamiento Múltiple (OpenCV): Se generan 4 variantes de la imagen en escala de grises (CLAHE, Umbral Adaptativo Gaussiano, Otsu Invertido y Filtro de Nitidez Kernel Sharp) para maximizar la tasa de éxito del OCR bajo distintas condiciones de luz.Extracción y Filtrado (EasyOCR): Lectura paralela con un diccionario restrictivo (Allowlist).Normalización (Regex): Corrección sintáctica automatizada basada en los patrones de combinación oficiales de placas mexicanas (ej. intercambio de I por T al inicio, sustitución de letras homófonas por números como O $\rightarrow$ 0, etc.).Control de Duplicados: Filtro de memoria local para evitar inserciones repetidas del mismo vehículo en un rango de 5 minutos.Persistencia (Cloud Firestore): Envío asíncrono del registro estructurado a la colección detecciones.🛠️ Requisitos PreviosHardwareCámara remota ESP32-CAM montada en la misma red local.Computadora con soporte para ejecución de modelos de Computer Vision.Software y DependenciasAsegúrate de contar con Python 3.10+ instalado. Las librerías necesarias son:Bashpip install opencv-python numpy easyocr ultralytics firebase-admin
+📂 Estructura del MóduloPlaintextvision/
+├── models/
+│   └── best.pt               # Pesos entrenados del modelo YOLOv8
+├── Wifi_ESP32cam/
+│   └── Wifi_ESP32cam.ino     # Código fuente para el firmware de la ESP32
+├── .gitignore                # Exclusión de credenciales y entornos locales
+├── IPaddressClassification.py # Script principal del pipeline de visión
+└── README.md                 # Documentación del proyecto
+⚠️ Nota de Seguridad Importante: El archivo de llaves privadas de la cuenta de servicio de Google Cloud (autocheck-esp32-cam-firebase-adminsdk-*.json) se encuentra protegido bajo las reglas del .gitignore. Cada desarrollador debe añadir su respectivo archivo de credenciales localmente en la raíz del proyecto para habilitar la conexión con Firestore.⚙️ Configuración y UsoConfigurar Hardware: Enciende la ESP32-CAM y valida la IP asignada en tu red. De ser necesario, actualiza la constante en IPaddressClassification.py:PythonESP32_URL = "http://YOUR_ESP32_IP/cam-hi.jpg"
+Inicializar Firebase: Coloca tu archivo .json de credenciales de Firebase en la raíz con el nombre esperado por el constructor de certificados del script.Ejecutar el Sistema:Abre tu terminal favorita (o la consola de VS Code) y arranca el script principal:Bashpython IPaddressClassification.py
+Controles de ventana:La ventana de OpenCV mostrará el video en tiempo real con las cajas verdes y el texto corregido superpuesto.Presiona la tecla ESC con la ventana activa para cerrar el sistema de manera segura.
