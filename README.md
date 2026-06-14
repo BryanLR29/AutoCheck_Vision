@@ -39,6 +39,7 @@ Asegúrate de contar con Python 3.9+ instalado. Instala las librerías necesaria
 
 Bash
 pip install opencv-python numpy easyocr ultralytics firebase-admin
+
 ⚠️ Nota sobre hardware: Este script está configurado inicialmente para ejecutarse en CPU (gpu=False en EasyOCR). Si dispones de una GPU Nvidia con soporte CUDA, puedes cambiar el parámetro a gpu=True para acelerar drásticamente el procesamiento.
 
 3. Credenciales de Firebase
