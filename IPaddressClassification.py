@@ -1,6 +1,3 @@
-"""
-AutoCheck v2 — Sistema de detección de placas vehiculares mexicanas
-"""
 
 import cv2
 import numpy as np
@@ -14,9 +11,8 @@ from firebase_admin import credentials, firestore
 import urllib.request
 import urllib.error
 
-# ─────────────────────────────────────────────
+
 # CONFIGURACIÓN
-# ─────────────────────────────────────────────
 cred = credentials.Certificate("autocheck-esp32-cam-firebase-adminsdk-74itm-a8b6949ea7.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
@@ -26,9 +22,8 @@ CAMARA_ID         = "ESP32_CAM_01"
 MINUTOS_DUPLICADO = 5
 CONFIANZA_MINIMA  = 0.40
 
-# ─────────────────────────────────────────────
+
 # MODELOS
-# ─────────────────────────────────────────────
 print("[INFO] Cargando modelo YOLOv8...")
 model = YOLO("models/best.pt")
 
@@ -37,9 +32,8 @@ reader = easyocr.Reader(["es", "en"], gpu=False)
 
 registro_local: dict[str, datetime] = {}
 
-# ─────────────────────────────────────────────
+
 # OCR
-# ─────────────────────────────────────────────
 LETRA_A_NUMERO = str.maketrans("OIZSBEQG", "01258360")
 SOLO_LETRAS    = re.compile(r'[^A-Z]')
 SOLO_NUMEROS   = re.compile(r'[^0-9]')
@@ -100,9 +94,9 @@ def corregir_placa(texto: str) -> str:
 
     return texto
 
-# ─────────────────────────────────────────────
+
 # VALIDACIÓN
-# ─────────────────────────────────────────────
+
 PATRONES_PLACA = re.compile(
     r'^[A-Z]{3}-\d{4}$|'
     r'^[A-Z]{3}-\d{3}-[A-Z]$|'
@@ -117,17 +111,17 @@ PATRONES_PLACA = re.compile(
 def es_placa_valida(texto: str) -> bool:
     return bool(PATRONES_PLACA.match(texto))
 
-# ─────────────────────────────────────────────
+
 # DUPLICADOS
-# ─────────────────────────────────────────────
+
 def es_duplicado(placa: str) -> bool:
     if placa not in registro_local:
         return False
     return (datetime.now() - registro_local[placa]) < timedelta(minutes=MINUTOS_DUPLICADO)
 
-# ─────────────────────────────────────────────
+
 # FIRESTORE
-# ─────────────────────────────────────────────
+
 def guardar_en_firestore(placa: str, confianza: float):
     doc = {
         "placa":      placa,
@@ -138,9 +132,8 @@ def guardar_en_firestore(placa: str, confianza: float):
     db.collection("detecciones").add(doc)
     print(f"[FIRESTORE] Guardado: {doc}")
 
-# ─────────────────────────────────────────────
 # PREPROCESAMIENTO
-# ─────────────────────────────────────────────
+
 def variantes_preprocesamiento(roi: np.ndarray) -> list:
     base = cv2.resize(roi, (400, 120), interpolation=cv2.INTER_CUBIC)
     gris = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY)
@@ -154,9 +147,9 @@ def variantes_preprocesamiento(roi: np.ndarray) -> list:
 
     return [v1, v2, v3, v4]
 
-# ─────────────────────────────────────────────
+
 # OCR
-# ─────────────────────────────────────────────
+
 ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
 
 def extraer_subcadena_placa(texto: str) -> str:
@@ -201,9 +194,8 @@ def ocr_mejor_resultado(variantes: list) -> tuple:
         return max(candidatos, key=lambda x: x[1])
     return "", -1.0
 
-# ─────────────────────────────────────────────
+
 # PIPELINE
-# ─────────────────────────────────────────────
 def detectar_y_leer(img: np.ndarray) -> np.ndarray:
     resultados = model(img, conf=CONFIANZA_MINIMA, iou=0.4, verbose=False)
 
@@ -256,9 +248,9 @@ def detectar_y_leer(img: np.ndarray) -> np.ndarray:
 
     return img
 
-# ─────────────────────────────────────────────
+
 # LOOP PRINCIPAL
-# ─────────────────────────────────────────────
+
 print(f"\n[INFO] AutoCheck v2 iniciado")
 print(f"[INFO] Conectando a ESP32-CAM: {ESP32_URL}\n")
 
