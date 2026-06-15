@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useDetecciones } from "@/hooks/use-detecciones";
 import { DeteccionesTable } from "@/components/detecciones/detecciones-table";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -10,36 +11,41 @@ export default function DeteccionesPage() {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <Alert variant="destructive">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        <Alert variant="destructive" className="border-destructive/20">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Error de conexión</AlertTitle>
           <AlertDescription>
-            <p className="mb-2">{error}</p>
-            <p className="text-sm text-muted-foreground">
-              Verifica la configuración de Firebase en <code className="rounded bg-muted px-1 py-0.5">.env.local</code>
-            </p>
+            <p className="text-sm">{error}</p>
           </AlertDescription>
         </Alert>
-        <Alert variant="warning">
+        <Alert variant="warning" className="border-amber-500/20">
           <Settings className="h-4 w-4" />
           <AlertTitle>Posibles causas</AlertTitle>
           <AlertDescription>
             <ul className="ml-5 list-disc space-y-1 text-sm text-muted-foreground">
-              <li>Las variables de entorno no están configuradas</li>
-              <li>Las reglas de Firestore no permiten lectura</li>
-              <li>El proyecto de Firebase no existe o está deshabilitado</li>
-              <li>La colección <code className="rounded bg-muted px-1 py-0.5">detecciones</code> no tiene documentos</li>
+              <li>Variables de entorno no configuradas en <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.env.local</code></li>
+              <li>Reglas de Firestore no permiten lectura</li>
+              <li>La colección <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">detecciones</code> no existe o está vacía</li>
             </ul>
           </AlertDescription>
         </Alert>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-6"
+    >
       <DeteccionesTable detecciones={detecciones} loading={loading} />
-    </div>
+    </motion.div>
   );
 }
