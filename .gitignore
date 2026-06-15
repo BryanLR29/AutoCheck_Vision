@@ -1,1 +1,5 @@
-echo "autocheck-*.json" >> .gitignore
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.json
