@@ -2,10 +2,17 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp32cam.h>
+#include <esp_camera.h>
 
 // ESTE PROGRAMA ENVIA IMAGEN SI SE COLOCA EN IP WEB, PERO SI SE COLOCA EN PYTHON ENVIA VIDEO POR LAS ITERACIONES. . . (SI FUNCIONA EN PYTHON)
-const char* WIFI_SSID = "Mega-2.4G-18B1";
-const char* WIFI_PASS = "WjeNaSuV3D";
+
+const char* WIFI_SSID = "PC-OMAR";
+
+//const char* WIFI_SSID = "Pixel_3708";
+const char* WIFI_PASS = "12345678";
+
+//const char* WIFI_SSID = "INFINITUM8EAD";
+//const char* WIFI_PASS = "Chulo_777";
 
 WebServer server(80); //servidor en el puerto 80
 
@@ -68,6 +75,12 @@ setup()
 
     bool ok = Camera.begin(cfg);
     Serial.println(ok ? "CAMARA OK" : "CAMARA FAIL");
+
+    // Corregir imagen espejada horizontalmente
+    sensor_t* s = esp_camera_sensor_get();
+    if (s) {
+      s->set_hmirror(s, 1);  // 1 = activar espejo horizontal
+    }
   }
 
   WiFi.persistent(false);
