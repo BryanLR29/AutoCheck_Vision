@@ -17,7 +17,7 @@ cred = credentials.Certificate("autocheck-esp32-cam-firebase-adminsdk-74itm-a8b6
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-ESP32_URL         = "http://192.168.137.219/cam-hi.jpg"
+ESP32_URL         = "http://192.168.137.185/cam-hi.jpg"
 CAMARA_ID         = "ESP32_CAM_01"
 MINUTOS_DUPLICADO = 5
 CONFIANZA_MINIMA  = 0.40
@@ -33,18 +33,33 @@ reader = easyocr.Reader(["es", "en"], gpu=False)
 registro_local: dict[str, datetime] = {}
 
 
-# OCR
+# OCR — NOM-001-SCT-2-2016: placas mexicanas no usan I, O, Q
 LETRA_A_NUMERO = str.maketrans("OIZSBEQG", "01258360")
-SOLO_LETRAS    = re.compile(r'[^A-Z]')
+SOLO_LETRAS    = re.compile(r'[^A-HJ-NP-Z]')   # Excluye I, O, Q
 SOLO_NUMEROS   = re.compile(r'[^0-9]')
 
 def limpiar_letras(s: str) -> str:
-    s = s.translate(str.maketrans("0125836", "OIZSBEQ"))
+    """Convierte dígitos que parecen letras; excluye I, O, Q (NOM)."""
+    s = s.translate(str.maketrans("0125836", "DLZSBEG"))
     return SOLO_LETRAS.sub('', s)
 
 def limpiar_numeros(s: str) -> str:
     s = s.translate(LETRA_A_NUMERO)
     return SOLO_NUMEROS.sub('', s)
+
+# NOM-001-SCT-2-2016: sustituir I->T, O->D, Q->G en posiciones de letras
+_NOM_LETRAS = str.maketrans("IOQ", "TDG")
+
+def _aplicar_nom(texto: str) -> str:
+    """Reemplaza I/O/Q por letras válidas solo en posiciones de letras."""
+    resultado = []
+    for ch in texto:
+        if ch.isalpha():
+            resultado.append(ch.translate(_NOM_LETRAS))
+        else:
+            resultado.append(ch)
+    return ''.join(resultado)
+
 
 def corregir_placa(texto: str) -> str:
     texto = re.sub(r'[^A-Z0-9\-]', '', texto.upper())
@@ -53,40 +68,93 @@ def corregir_placa(texto: str) -> str:
     if re.match(r'^I[A-Z]{2}', texto):
         texto = 'T' + texto[1:]
 
+    # Si el texto ya viene con guiones y es válido, devolverlo directo
+    # (preserva formatos como AAA-00-00 que son ambiguos sin guiones)
+    texto_limpio_nom = _aplicar_nom(texto)
+    if es_placa_valida(texto_limpio_nom):
+        return texto_limpio_nom
+
     puro = texto.replace('-', '')
     correcciones = []
 
+    # ── 7 caracteres ──────────────────────────────────────────
+
     if len(puro) == 7:
+        # G000-AAA  (gubernamental: G + 3 dígitos + 3 letras)
+        if puro[0] in 'G6':  # 6 se confunde con G
+            n1 = limpiar_numeros(puro[1:4])
+            l1 = limpiar_letras(puro[4:7])
+            if len(n1)==3 and len(l1)==3:
+                correcciones.append(f"G{n1}-{l1}")
+
+        # AA-0000-A (camión nuevo: 2 letras + 4 dígitos + 1 letra)
+        l1 = limpiar_letras(puro[0:2])
+        n1 = limpiar_numeros(puro[2:6])
+        l2 = limpiar_letras(puro[6:7])
+        if len(l1)==2 and len(n1)==4 and len(l2)==1:
+            correcciones.append(f"{l1}-{n1}-{l2}")
+
+        # AAA-000-A (particular nuevo: 3 letras + 3 dígitos + 1 letra)
         l1 = limpiar_letras(puro[0:3])
         n1 = limpiar_numeros(puro[3:6])
         l2 = limpiar_letras(puro[6:7])
         if len(l1)==3 and len(n1)==3 and len(l2)==1:
             correcciones.append(f"{l1}-{n1}-{l2}")
 
-    if len(puro) == 7:
+        # AAA-0000  (3 letras + 4 dígitos)
         l1 = limpiar_letras(puro[0:3])
         n1 = limpiar_numeros(puro[3:7])
         if len(l1)==3 and len(n1)==4:
             correcciones.append(f"{l1}-{n1}")
 
-    if len(puro) == 6:
-        n1 = limpiar_numeros(puro[0:3])
-        l1 = limpiar_letras(puro[3:6])
-        if len(n1)==3 and len(l1)==3:
-            correcciones.append(f"{n1}-{l1}")
+        # AAA-00-00 (3 letras + 2 dígitos + 2 dígitos)
+        l1 = limpiar_letras(puro[0:3])
+        n1 = limpiar_numeros(puro[3:5])
+        n2 = limpiar_numeros(puro[5:7])
+        if len(l1)==3 and len(n1)==2 and len(n2)==2:
+            correcciones.append(f"{l1}-{n1}-{n2}")
 
-    if len(puro) == 7:
+        # 00-AAA-00 (2 dígitos + 3 letras + 2 dígitos)
         n1 = limpiar_numeros(puro[0:2])
         l1 = limpiar_letras(puro[2:5])
         n2 = limpiar_numeros(puro[5:7])
         if len(n1)==2 and len(l1)==3 and len(n2)==2:
             correcciones.append(f"{n1}-{l1}-{n2}")
 
+    # ── 6 caracteres ──────────────────────────────────────────
+
     if len(puro) == 6:
+        # Y000AA   (motocicleta: Y + 3 dígitos + 2 letras)
+        if puro[0] in 'Y':
+            n1 = limpiar_numeros(puro[1:4])
+            l1 = limpiar_letras(puro[4:6])
+            if len(n1)==3 and len(l1)==2:
+                correcciones.append(f"Y{n1}{l1}")
+
+        # AA-0000  (camión: 2 letras + 4 dígitos)
+        l1 = limpiar_letras(puro[0:2])
+        n1 = limpiar_numeros(puro[2:6])
+        if len(l1)==2 and len(n1)==4:
+            correcciones.append(f"{l1}-{n1}")
+
+        # 000-AAA  (3 dígitos + 3 letras)
+        n1 = limpiar_numeros(puro[0:3])
+        l1 = limpiar_letras(puro[3:6])
+        if len(n1)==3 and len(l1)==3:
+            correcciones.append(f"{n1}-{l1}")
+
+        # AAA-000  (particular clásico: 3 letras + 3 dígitos)
         l1 = limpiar_letras(puro[0:3])
         n1 = limpiar_numeros(puro[3:6])
         if len(l1)==3 and len(n1)==3:
             correcciones.append(f"{l1}-{n1}")
+
+        # A00-AAA  (CDMX: 1 letra + 2 dígitos + 3 letras)
+        l1 = limpiar_letras(puro[0:1])
+        n1 = limpiar_numeros(puro[1:3])
+        l2 = limpiar_letras(puro[3:6])
+        if len(l1)==1 and len(n1)==2 and len(l2)==3:
+            correcciones.append(f"{l1}{n1}-{l2}")
 
     for c in correcciones:
         if es_placa_valida(c):
@@ -97,15 +165,20 @@ def corregir_placa(texto: str) -> str:
 
 # VALIDACIÓN
 
+# L = [A-HJ-NP-Z]  (letras válidas en placas MX, sin I/O/Q)
+_L = r'[A-HJ-NP-Z]'
 PATRONES_PLACA = re.compile(
-    r'^[A-Z]{3}-\d{4}$|'
-    r'^[A-Z]{3}-\d{3}-[A-Z]$|'
-    r'^[A-Z]{3}-\d{3}$|'
-    r'^\d{3}-[A-Z]{3}$|'
-    r'^\d{2}-[A-Z]{3}-\d{2}$|'
-    r'^[A-Z]{3}\d{2,4}$|'
-    r'^\d{3}[A-Z]{3}$|'
-    r'^G\d{3}-[A-Z]{3}$'
+    rf'^{_L}{{3}}-\d{{3}}-{_L}$|'       # AAA-000-A  particular nuevo
+    rf'^{_L}{{3}}-\d{{4}}$|'             # AAA-0000
+    rf'^{_L}{{3}}-\d{{2}}-\d{{2}}$|'     # AAA-00-00
+    rf'^{_L}{{3}}-\d{{3}}$|'             # AAA-000    particular clásico
+    rf'^{_L}\d{{2}}-{_L}{{3}}$|'         # A00-AAA    CDMX
+    rf'^{_L}{{2}}-\d{{4}}-{_L}$|'        # AA-0000-A  camión nuevo
+    rf'^{_L}{{2}}-\d{{4}}$|'             # AA-0000    camión
+    rf'^Y\d{{3}}{_L}{{2}}$|'             # Y000AA     motocicleta
+    rf'^\d{{2}}-{_L}{{3}}-\d{{2}}$|'     # 00-AAA-00
+    rf'^\d{{3}}-{_L}{{3}}$|'             # 000-AAA
+    rf'^G\d{{3}}-{_L}{{3}}$'             # G000-AAA   gubernamental
 )
 
 def es_placa_valida(texto: str) -> bool:
@@ -153,14 +226,34 @@ def variantes_preprocesamiento(roi: np.ndarray) -> list:
 ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
 
 def extraer_subcadena_placa(texto: str) -> str:
+    """Extrae la subcadena que más se parece a una placa mexicana.
+    Usa [A-Z] (no [A-HJ-NP-Z]) porque el OCR puede leer I/O/Q;
+    corregir_placa() se encarga de limpiarlos después.
+    Patrones ordenados de más largo/específico a más corto."""
     patron = re.compile(
-        r'[A-Z]{3}-\d{3}-[A-Z]|'
-        r'[A-Z]{3}-\d{4}|'
-        r'[A-Z]{3}-\d{3}|'
-        r'\d{3}-[A-Z]{3}|'
-        r'\d{2}-[A-Z]{3}-\d{2}|'
-        r'[A-Z]{3}\d{4}|'
-        r'[A-Z]{3}\d{3}'
+        # ── 8 chars (con guiones internos) ─────────────────
+        r'[A-Z]{3}-\d{2}-\d{2}|'           # AAA-00-00
+        r'[A-Z]{2}-\d{4}-[A-Z]|'           # AA-0000-A  camión nuevo
+        # ── 7 chars ───────────────────────────────────────
+        r'[A-Z]{3}-\d{3}-[A-Z]|'           # AAA-000-A  con guiones
+        r'[A-Z]{3}\d{3}[A-Z]|'             # AAA000A    sin guiones
+        r'[A-Z]{2}\d{4}[A-Z]|'             # AA0000A    camión nuevo sin guiones
+        r'G\d{3}-[A-Z]{3}|'               # G000-AAA   gubernamental
+        r'G\d{3}[A-Z]{3}|'                # G000AAA    gubernamental sin guión
+        r'[A-Z]{3}-\d{4}|'                # AAA-0000
+        r'[A-Z]{3}\d{4}|'                 # AAA0000
+        r'\d{2}-[A-Z]{3}-\d{2}|'          # 00-AAA-00
+        r'\d{2}[A-Z]{3}\d{2}|'            # 00AAA00
+        # ── 6 chars ───────────────────────────────────────
+        r'Y\d{3}[A-Z]{2}|'                # Y000AA     motocicleta
+        r'[A-Z]{2}-\d{4}|'                # AA-0000    camión
+        r'[A-Z]{2}\d{4}(?![A-Z0-9])|'     # AA0000     camión sin guión
+        r'[A-Z]\d{2}-[A-Z]{3}|'           # A00-AAA    CDMX
+        r'[A-Z]\d{2}[A-Z]{3}|'            # A00AAA     CDMX sin guión
+        r'[A-Z]{3}-\d{3}(?!-?[A-Z0-9])|'  # AAA-000    solo si NO sigue más
+        r'\d{3}-[A-Z]{3}|'                # 000-AAA
+        r'[A-Z]{3}\d{3}(?![A-Z0-9])|'     # AAA000     solo si NO sigue más
+        r'\d{3}[A-Z]{3}'                  # 000AAA
     )
     match = patron.search(texto)
     return match.group(0) if match else texto

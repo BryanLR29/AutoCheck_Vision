@@ -1,0 +1,111 @@
+================================================================================
+ CHANGELOG - AutoCheck Vision
+ Fecha: 2026-07-13
+================================================================================
+
+RESUMEN:
+  Se actualizó el sistema de detección y validación de placas mexicanas en
+  IPaddressClassification.py para soportar los 11 formatos oficiales de placas
+  de México y cumplir con la norma NOM-001-SCT-2-2016.
+
+--------------------------------------------------------------------------------
+ BUG CORREGIDO
+--------------------------------------------------------------------------------
+
+  * Placas con formato "AAA-000-A" (particular nuevo) solo detectaban los
+    primeros 6 caracteres ("AAA-000"), perdiendo la última letra.
+
+  CAUSA: En extraer_subcadena_placa(), el patrón regex [A-Z]{3}-\d{3} hacía
+  match antes que [A-Z]{3}-\d{3}-[A-Z] cuando el OCR no detectaba el segundo
+  guión (ej. "TBC-456A" o "TBC456A").
+
+  SOLUCIÓN: Se reordenaron los patrones de más largo a más corto y se agregaron
+  patrones sin guión (ej. [A-Z]{3}\d{3}[A-Z]) con negative lookahead en los
+  patrones cortos para evitar capturas prematuras.
+
+--------------------------------------------------------------------------------
+ FORMATOS DE PLACAS SOPORTADOS (11 total)
+--------------------------------------------------------------------------------
+
+  Formato        | Ejemplo      | Tipo
+  ---------------+--------------+----------------------------
+  AAA-000-A      | TBC-456-A    | Particular nuevo
+  AAA-000        | TBC-456      | Particular clásico
+  AAA-0000       | ABC-1234     | 3 letras + 4 dígitos
+  A00-AAA        | T32-BCD      | CDMX
+  AAA-00-00      | ABC-12-34    | 3 letras + 2+2 dígitos
+  AA-0000        | AB-1234      | Camión
+  AA-0000-A      | AB-1234-C    | Camión nuevo
+  Y000AA         | Y123AB       | Motocicleta
+  00-AAA-00      | 12-ABC-34    | 2 dígitos + 3 letras + 2 dígitos
+  000-AAA        | 123-ABC      | 3 dígitos + 3 letras
+  G000-AAA       | G123-ABC     | Gubernamental
+
+--------------------------------------------------------------------------------
+ CAMBIOS EN DETALLE
+--------------------------------------------------------------------------------
+
+1. SOLO_LETRAS y limpiar_letras() [líneas 38-44]
+   - SOLO_LETRAS ahora usa [^A-HJ-NP-Z] para excluir I, O, Q según la
+     NOM-001-SCT-2-2016.
+   - Tabla de traducción de dígitos a letras actualizada:
+       ANTES: 0->O, 1->I, 6->Q  (producía letras inválidas)
+       AHORA: 0->D, 1->L, 6->G  (letras válidas en placas MX)
+
+2. _aplicar_nom() [líneas 50-62] — NUEVA
+   - Función auxiliar que reemplaza I->T, O->D, Q->G únicamente en
+     posiciones de letras (no toca dígitos ni guiones).
+   - Se usa al inicio de corregir_placa() para limpiar textos que ya
+     traen guiones y son formato válido.
+
+3. corregir_placa() [líneas 65-163]
+   - Validación temprana: si el texto ya viene con guiones y es válido
+     (aplicando limpieza NOM), se devuelve directo. Esto preserva
+     formatos como AAA-00-00 que son ambiguos sin guiones.
+   - Se agregaron los nuevos formatos de corrección:
+       * G000-AAA  (gubernamental, con detección de 6->G)
+       * AA-0000-A (camión nuevo)
+       * AA-0000   (camión)
+       * A00-AAA   (CDMX)
+       * Y000AA    (motocicleta)
+       * AAA-00-00
+   - Se reordenaron los patrones por prioridad para evitar falsos
+     positivos (ej. AA-0000 antes de AAA-000 para que "AB1234" no se
+     convierta erróneamente a "ABL-234").
+
+4. PATRONES_PLACA [líneas 168-180]
+   - Se actualizó para incluir los 11 formatos mexicanos.
+   - Todas las posiciones de letras usan [A-HJ-NP-Z] en lugar de [A-Z].
+
+5. extraer_subcadena_placa() [líneas 222-253]
+   - Se agregaron patrones de extracción para todos los nuevos formatos,
+     tanto con guiones como sin guiones.
+   - Se mantiene [A-Z] (no [A-HJ-NP-Z]) porque el OCR puede leer I/O/Q;
+     la corrección NOM se aplica después en corregir_placa().
+   - Patrones ordenados de más largo/específico a más corto.
+   - Negative lookahead en patrones de 6 chars para no capturar
+     prematuramente cuando hay un 7mo carácter disponible.
+
+--------------------------------------------------------------------------------
+ ARCHIVOS MODIFICADOS
+--------------------------------------------------------------------------------
+
+  * IPaddressClassification.py  — Todas las funciones de validación, corrección
+                                  y extracción de placas.
+
+  ARCHIVOS NO MODIFICADOS:
+  * Conexión ESP32-CAM, Firestore, loop principal, preprocesamiento de imagen.
+
+--------------------------------------------------------------------------------
+ TESTS
+--------------------------------------------------------------------------------
+
+  Se ejecutaron 26 tests cubriendo:
+  - Los 11 formatos con y sin guiones
+  - Extracción desde texto con ruido del OCR
+  - Corrección de I/O/Q según NOM-001-SCT-2-2016
+  - Reproducción y verificación del bug original (último dígito perdido)
+
+  Resultado: 26/26 PASSED
+
+================================================================================
